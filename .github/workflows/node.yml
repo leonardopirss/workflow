@@ -1,0 +1,119 @@
+name: Node.js CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version to test against
+        required: false
+        type: string
+        default: "20.x"
+    secrets:
+      SVC_TOKEN:
+        description: GitHub token with repo and workflow permissions
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      node-version:
+        description: Node.js version to test against
+        required: false
+        default: "20.x"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - ${{ inputs.node-version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build application
+        run: npm run build --if-present
+
+      - name: Extract coverage
+        if: ${{ matrix.node-version == inputs.node-version && env.SKIP_COVERAGE != 'true' && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/') && (github.event_name != 'pull_request' || (!startsWith(github.base_ref, 'release/') && !startsWith(github.base_ref, 'hotfix/'))) }}
+        id: coverage
+        env:
+          GH_TOKEN: ${{ secrets.SVC_TOKEN || github.token }}
+        run: |
+          if [ ! -f coverage/cobertura-coverage.xml ]; then
+            echo "HAS_COVERAGE=false" >> "$GITHUB_OUTPUT"
+            echo "Coverage file not found: coverage/cobertura-coverage.xml"
+            exit 0
+          fi
+
+          LINE_RATE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura-coverage.xml | head -1)
+          LINE_COVERAGE=$(echo "$LINE_RATE * 100" | bc -l | xargs printf "%.2f")
+          echo "HAS_COVERAGE=true" >> "$GITHUB_OUTPUT"
+          echo "LINE_COVERAGE=$LINE_COVERAGE" >> "$GITHUB_OUTPUT"
+          echo "Current Line Coverage: $LINE_COVERAGE%"
+
+          REPO_NAME=$(echo "${{ github.event.repository.name }}" | tr '-' '_')
+          MIN_COVERAGE=$(gh variable get "$REPO_NAME" 2>/dev/null || echo "")
+          echo "MIN_COVERAGE=$MIN_COVERAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Check coverage threshold
+        if: ${{ steps.coverage.outputs.HAS_COVERAGE == 'true' && env.SKIP_COVERAGE != 'true' && !startsWith(github.ref_name, 'main') && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/') && (github.event_name != 'pull_request' || (!startsWith(github.base_ref, 'release/') && !startsWith(github.base_ref, 'hotfix/'))) && steps.coverage.outputs.MIN_COVERAGE != '' }}
+        env:
+          CURRENT_COVERAGE: ${{ steps.coverage.outputs.LINE_COVERAGE }}
+          MIN_COVERAGE: ${{ steps.coverage.outputs.MIN_COVERAGE }}
+        run: |
+          echo "Current coverage: $CURRENT_COVERAGE%"
+          echo "Minimum required: $MIN_COVERAGE%"
+          if (( $(echo "$CURRENT_COVERAGE < $MIN_COVERAGE" | bc -l) )); then
+            echo "::error::Coverage ($CURRENT_COVERAGE%) is less than minimum required ($MIN_COVERAGE%)"
+            exit 1
+          fi
+          echo "Coverage check passed!"
+
+      - name: Update coverage variable
+        if: ${{ steps.coverage.outputs.HAS_COVERAGE == 'true' && env.SKIP_COVERAGE != 'true' && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/heads/hotfix/')) }}
+        env:
+          GH_TOKEN: ${{ secrets.SVC_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "SVC_TOKEN was not provided; skipping coverage variable update."
+            exit 0
+          fi
+
+          REPO_NAME=$(echo "${{ github.event.repository.name }}" | tr '-' '_')
+          gh variable set "$REPO_NAME" --body "${{ steps.coverage.outputs.LINE_COVERAGE }}"
+          echo "Updated $REPO_NAME to ${{ steps.coverage.outputs.LINE_COVERAGE }}%"
+
+      - name: Coverage Summary
+        if: ${{ steps.coverage.outputs.HAS_COVERAGE == 'true' && env.SKIP_COVERAGE != 'true' && !startsWith(github.ref_name, 'main') && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/') && (github.event_name != 'pull_request' || (!startsWith(github.base_ref, 'release/') && !startsWith(github.base_ref, 'hotfix/'))) }}
+        run: |
+          CURRENT="${{ steps.coverage.outputs.LINE_COVERAGE }}"
+          PREVIOUS="${{ steps.coverage.outputs.MIN_COVERAGE }}"
+          PREVIOUS="${PREVIOUS:-0}"
+
+          if (( $(echo "$CURRENT >= $PREVIOUS" | bc -l) )); then
+            STATUS=":green_circle:"
+          else
+            STATUS=":red_circle:"
+          fi
+
+          echo "# :recycle: Coverage Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "|Scope|Coverage|Status|" >> "$GITHUB_STEP_SUMMARY"
+          echo "|:-|:-:|:-:|" >> "$GITHUB_STEP_SUMMARY"
+          echo "|Overall Project|${CURRENT}%|${STATUS}|" >> "$GITHUB_STEP_SUMMARY"
