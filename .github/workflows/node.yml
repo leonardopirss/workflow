@@ -73,7 +73,7 @@ jobs:
           echo "MIN_COVERAGE=$MIN_COVERAGE" >> "$GITHUB_OUTPUT"
 
       - name: Check coverage threshold
-        if: ${{ steps.coverage.outputs.HAS_COVERAGE == 'true' && env.SKIP_COVERAGE != 'true' && !startsWith(github.ref_name, 'main') && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/') && (github.event_name != 'pull_request' || (!startsWith(github.base_ref, 'release/') && !startsWith(github.base_ref, 'hotfix/'))) && steps.coverage.outputs.MIN_COVERAGE != '' }}
+        #if: ${{ steps.coverage.outputs.HAS_COVERAGE == 'true' && env.SKIP_COVERAGE != 'true' && !startsWith(github.ref_name, 'main') && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/') && (github.event_name != 'pull_request' || (!startsWith(github.base_ref, 'release/') && !startsWith(github.base_ref, 'hotfix/'))) && steps.coverage.outputs.MIN_COVERAGE != '' }}
         env:
           CURRENT_COVERAGE: ${{ steps.coverage.outputs.LINE_COVERAGE }}
           MIN_COVERAGE: ${{ steps.coverage.outputs.MIN_COVERAGE }}
