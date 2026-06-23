@@ -87,7 +87,7 @@ jobs:
           echo "Coverage check passed!"
 
       - name: Update coverage variable
-        if: ${{ steps.coverage.outputs.HAS_COVERAGE == 'true' && env.SKIP_COVERAGE != 'true' && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/heads/hotfix/')) }}
+        if: ${{ steps.coverage.outputs.HAS_COVERAGE == 'true' && env.SKIP_COVERAGE != 'true' && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/heads/hotfix/') || startsWith(github.ref, 'refs/heads/main')) }}
         env:
           GH_TOKEN: ${{ secrets.SVC_TOKEN }}
         run: |
