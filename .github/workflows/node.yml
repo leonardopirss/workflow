@@ -73,7 +73,6 @@ jobs:
           echo "MIN_COVERAGE=$MIN_COVERAGE" >> "$GITHUB_OUTPUT"
 
       - name: Check coverage threshold
-        #if: ${{ steps.coverage.outputs.HAS_COVERAGE == 'true' && env.SKIP_COVERAGE != 'true' && !startsWith(github.ref_name, 'main') && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/') && (github.event_name != 'pull_request' || (!startsWith(github.base_ref, 'release/') && !startsWith(github.base_ref, 'hotfix/'))) && steps.coverage.outputs.MIN_COVERAGE != '' }}
         env:
           CURRENT_COVERAGE: ${{ steps.coverage.outputs.LINE_COVERAGE }}
           MIN_COVERAGE: ${{ steps.coverage.outputs.MIN_COVERAGE }}
@@ -87,9 +86,9 @@ jobs:
           echo "Coverage check passed!"
 
       - name: Update coverage variable
-        if: ${{ steps.coverage.outputs.HAS_COVERAGE == 'true' && env.SKIP_COVERAGE != 'true' && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/heads/hotfix/') || startsWith(github.ref, 'refs/heads/main')) }}
+        if: ${{ env.CURRENT_COVERAGE != '' && fromJSON(env.CURRENT_COVERAGE) > fromJSON(env.MIN_COVERAGE) }}
         env:
-          GH_TOKEN: ${{ secrets.SVC_TOKEN }}
+          GH_TOKEN: ${{ secrets.SVC_TOKEN || github.token }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "SVC_TOKEN was not provided; skipping coverage variable update."
